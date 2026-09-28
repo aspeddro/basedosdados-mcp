@@ -1673,6 +1673,79 @@ def delete_table(
     return {"deleted": True, "id": table_id}
 
 
+#: Child records of a table that a re-run can duplicate, mapped to their
+#: GraphQL mutation. `create_update_*` is not idempotent for these: omitting
+#: `id` creates a brand-new row rather than updating the existing one.
+#:
+#: Dataset, Table and Column are deliberately absent. Their loss is expensive
+#: and not recoverable from the backend, they already have explicit tools that
+#: name what they destroy, and a generic escape hatch lets a mistyped `kind`
+#: reach them.
+_DELETABLE_RECORDS = {
+    "coverage": "DeleteCoverage",
+    "datetimerange": "DeleteDateTimeRange",
+    "observationlevel": "DeleteObservationLevel",
+    "update": "DeleteUpdate",
+    "poll": "DeletePoll",
+    "cloudtable": "DeleteCloudTable",
+}
+
+
+@mcp.tool()
+def delete_record(
+    kind: str,
+    record_id: str,
+    env: str = "dev",
+) -> dict:
+    """
+    Delete one child metadata record of a table.
+
+    Exists because `create_update_*` is not idempotent for a table's children:
+    omitting `id` creates a new row, so a registration script that runs twice
+    silently doubles the coverages, datetime ranges, observation levels and
+    updates. That is not merely untidy — duplicate coverages make a later
+    `create_update_table` fail with `'TableForm' has no field named
+    'coverages_areas'`, an error that names nothing relevant.
+
+    Args:
+        kind: "coverage", "datetimerange", "observationlevel", "update",
+            "poll" or "cloudtable". Underscores and hyphens are ignored, so
+            "datetime_range" also works.
+        record_id: bare record ID (UUID)
+        env: "dev" or "prod"
+
+    Returns: {"deleted": True, "kind": str, "id": str}
+
+    Datasets, tables and columns cannot be deleted through this tool — use
+    delete_table or delete_column.
+    """
+    normalised = kind.lower().replace("_", "").replace("-", "")
+    mutation = _DELETABLE_RECORDS.get(normalised)
+    if mutation is None:
+        raise ValueError(
+            f"kind must be one of {sorted(_DELETABLE_RECORDS)}, got {kind!r}"
+        )
+    q = f"""
+    mutation($id: UUID!) {{
+        {mutation}(id: $id) {{
+            ok
+            errors
+        }}
+    }}
+    """
+    result = _gql(q, {"id": record_id}, env=env)
+    payload = result[mutation]
+    if payload and payload.get("errors"):
+        raise RuntimeError(f"{mutation} errors: {payload['errors']}")
+    # `ok: false` with an empty `errors` is the backend refusing without saying
+    # why. Returning success there would report a cleanup that did not happen.
+    if payload and payload.get("ok") is False:
+        raise RuntimeError(
+            f"{mutation} returned ok=false for {record_id} (no errors given)"
+        )
+    return {"deleted": True, "kind": normalised, "id": record_id}
+
+
 @mcp.tool()
 def create_update_observation_level(
     table_id: str,
