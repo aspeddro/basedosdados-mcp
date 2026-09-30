@@ -403,7 +403,7 @@ def discover_ids(
         result["tag"] = {n["slug"]: _strip_id(n["id"]) for n in nodes}
 
     if "entity_category" in requested:
-        nodes = _fetch_all(env, "allEntityCategory", "id slug name", auth=False)
+        nodes = _fetch_all(env, "allEntitycategory", "id slug name", auth=False)
         result["entity_category"] = {n["slug"]: _strip_id(n["id"]) for n in nodes}
 
     if "language" in requested:
@@ -411,7 +411,7 @@ def discover_ids(
         result["language"] = {n["slug"]: _strip_id(n["id"]) for n in nodes}
 
     if "measurement_unit_category" in requested:
-        nodes = _fetch_all(env, "allMeasurementUnitCategory", "id slug name", auth=False)
+        nodes = _fetch_all(env, "allMeasurementunitcategory", "id slug name", auth=False)
         result["measurement_unit_category"] = {n["slug"]: _strip_id(n["id"]) for n in nodes}
 
     if "ids" not in _cache:
@@ -420,14 +420,18 @@ def discover_ids(
     return result
 
 
+# The backend names a root list field all<Modelname> with only the first letter
+# capitalised, so a multi-word model is allEntitycategory, not allEntityCategory.
+# Verify a new entry against the schema before adding it: a wrong name is not a
+# lookup miss, it is an HTTP 400 that takes the whole discover_ids call down.
 _CATEGORY_QUERY_MAP = {
     "organization": ("allOrganization", "id slug namePt"),
     "theme": ("allTheme", "id slug namePt"),
     "tag": ("allTag", "id slug name"),
     "entity": ("allEntity", "id slug namePt"),
-    "entity_category": ("allEntityCategory", "id slug name"),
+    "entity_category": ("allEntitycategory", "id slug name"),
     "language": ("allLanguage", "id slug name"),
-    "measurement_unit_category": ("allMeasurementUnitCategory", "id slug name"),
+    "measurement_unit_category": ("allMeasurementunitcategory", "id slug name"),
     "license": ("allLicense", "id slug namePt"),
     "availability": ("allAvailability", "id slug namePt"),
     "status": ("allStatus", "id slug"),
